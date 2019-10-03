@@ -1,0 +1,269 @@
+---
+title: "R workshop"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents: <http://rmarkdown.rstudio.com>.
+
+Click the **Knit** button to generate the output document.
+
+Add `echo=FALSE` or `include=FALSE` to prevent printing of the R code in output file.
+
+`&nbsp;` adds space between paragraphs 
+
+---
+&nbsp;
+
+## Before we start 
+
+1/ You need to install R & RStudio and have an internet connection  
+2/ Create a folder with the files R_worshop.rmd and data.csv  
+3/ Open R_worshop.rmd  
+4/ Save it as R_worshop_YOURNAME.rmd  
+5/ Edit that document as we go along (add notes, answer the questions etc ...)  
+
+&nbsp;
+
+## Set up 
+```{r}
+## define working directory ########## CHANGE !!!!
+setwd("C:/Users/action/Desktop/R_workshop/")
+
+## define plot theme
+source("plotTheme.R")
+```
+&nbsp;  
+
+## 1) Load R packages
+Install all packages you need/load existing packages.  
+  
+```{r, message=FALSE}
+## install new packages
+#install.packages("ggplot2") 
+#install.packages("dplyr") 
+
+## load packages that are used within this script
+library(ggplot2)
+require(dplyr)
+```
+&nbsp;
+
+## 2) Import data set
+Let's load some data from a csv file.    
+  
+```{r, message=FALSE}
+data = read.table("data.csv", header=T, sep=",")
+#head(data)
+```
+&nbsp;
+
+## 3) Prepare data set
+Prepare data for your analysis.
+In R, you need to specify if your data is categorical or continuous to run the analysis properly. By default, R considers variables as continuous.
+
+``` {r}
+## define categorical variables as factors
+data$trcond <- factor(data$trcond, levels=c(1,2,3), labels=c("Test", "Easy", "Conflict"))
+data$coh <- factor(data$coh, labels=c("low", "high"))
+data$dir <- factor(data$dir, labels=c("left","right"))
+data$id <- factor(data$id)
+
+## exclude error trials
+## %>% specifies that the function 'filter' is applied to 'data'
+data_correct = data %>% filter(data$error == 0)
+
+```
+Next, we want to remove RTs outside +/- 3 SD.
+First step, is to calculate z-standardised RTs using the function `scale`. Because there are big differences between subjects and conditions, we perform this separately for each condition and participants. We add that to the dataset in a new column RT_z.
+
+``` {r}
+## z-standardise RTs for each subject and trial condition separately
+data_correct = data_correct %>%
+  group_by(id, trcond) %>%
+  mutate(RT_z = as.numeric(scale(RT))) %>% 
+  ungroup
+```
+&nbsp;
+
+**Task 1:**   
+a) Exclude RT outliers (outside +/- 3SD) by using the `filter` function, and call the new data set `data_screened`.    
+b) Plot a histogram of the screened RTs (hint: you will need the function `hist`)
+
+
+
+
+
+
+
+
+
+&nbsp;
+
+## 4) Comparing Means  
+#### Paired t-test & repeated-measures ANOVA  
+Aggregate data: The `aggregate` function allows you to obtain summary statistics (mean/sd/sum/min...) for each id and condition.
+
+```{r}
+## Compute the mean RTs for each id and condition
+RTmean <- aggregate(RT ~ id + trcond,
+                    data = data_screened, 
+                    mean)
+
+## t-test: compare RTs for the two conditions Test vs. Easy trials
+t.test(RT ~ trcond, data = subset(RTmean, trcond %in% c("Easy", "Test")),
+       paired = TRUE, alternative = "two.sided")
+
+## one-way ANOVA: compare RTs across all conditions
+results <- aov(RT ~ trcond + Error(id/trcond), data = RTmean)
+
+summary(results)
+
+```
+&nbsp;
+
+**TASK 2:** RUNNING A 2x2 ANOVA  
+a) Average RTs by dot-motion coherence (coh) and dot-motion direction (dir) using the function `aggregate`.
+b) Run a repeated-measures 2x2 ANOVA to analyse the main effects and interaction of dot-motion coherence x direction (hint: interaction terms are specified with `*`)
+
+
+
+
+
+
+
+
+
+&nbsp;
+
+## 6) Plotting Results 
+#### Barplots & Boxplots
+
+```{r}
+## boxplot of RTs
+ggplot(RTmean, aes(x=trcond, y=RT)) + 
+  geom_boxplot() +
+  labs(x="Condition", y="RTs (ms)") + 
+  myTheme()
+
+## barplot of mean RTs
+ggplot(RTmean, aes(x=trcond, y=RT)) + 
+  stat_summary(fun.y=mean, geom="bar") +
+  stat_summary(fun.data=mean_se, geom="errorbar", width=.1) +
+  labs(x="Condition", y="Mean RT (ms)") + 
+  myTheme()
+
+
+## barplot of mean RTs: coherence x direction
+pd <- position_dodge(.9) # move bars from centre so they don't overlap
+ggplot(RTmean2, aes(x=coh, y=RT, fill=dir)) + 
+  stat_summary(fun.y=mean, geom="bar", position=pd) +
+  stat_summary(fun.data=mean_se, geom="errorbar", position=pd,width=.1) +
+  #geom_point(position=pd) + 
+  labs(x="Coherence", y="Mean RT (ms)", fill="Direction") + 
+  myTheme()
+  #scale_fill_manual(values=c("#006033","#153E7E"))
+  #scale_fill_manual(values=c("red","blue"))
+  #scale_fill_brewer(palette="Set1") #"Spectral", "Blues" etc.
+
+
+## save plot 
+ggsave("RTs.png", scale = 1, width = NA, height = NA, units = "cm", dpi = 300)
+
+```
+&nbsp;
+
+## 7) Regressions & Scatterplots
+Correlation between % outcome and SoA judgments
+
+```{r}
+## Select data of participant 1
+dataSub1 <- subset(data_screened,id %in% "1")
+
+## Regression RT -> SoA 
+reg <- lm(SoA ~ RT, data = dataSub1)
+summary(reg)
+
+## Plot correlation
+ggplot(dataSub1, aes(x=RT, y=SoA)) + 
+  geom_point() + 
+  labs(x="RT (ms)", y="Mean SoA rating (%)") +
+   geom_smooth(method="lm", se=TRUE, level=0.95) +
+    scale_x_continuous(limits=c(300,900)) + 
+  myTheme()
+
+```
+
+&nbsp;
+
+**TASK 3**:  
+a) Run a GLM using the function `lm` to analyse the effects of both RTs and trcond on SoA.
+
+
+
+
+
+
+
+
+
+Let's plot the regression line of RTs -> SoA separately for each trial condition.
+
+```{r}
+
+
+## Plot correlation
+ggplot(dataSub1, aes(x=RT, y=SoA, color = trcond)) + 
+  geom_point() + 
+  labs(x="RT (ms)", y="Mean SoA rating (%)", color = "Trial condition") +
+   geom_smooth(method="lm", se=TRUE, level=0.95) +
+  myTheme() + 
+  #scale_color_manual(values=c("red","blue"))
+   scale_color_brewer(palette="Accent") #"Spectral", "Blues" etc.
+
+```
+
+
+&nbsp;
+
+## 8) Linear Mixed-Effects Models
+Running an LMEM with RTs as a fixed effect and IDs as random intercepts. This model accounts for the fact that participants vary in their overall SoA judgments (each participant has a different intercept). Furthermore, it allows us to include RT as a variable that varies on a trial-by-trial basis within participants ("RTs are nested within IDs").  
+
+
+```{r}
+## libraries needed for LMEM
+#install.packages("lme4")
+#install.packages("TMB")
+#install.packages("sjPlot")
+
+library(lme4)
+library(sjPlot)
+
+data_screened$outcome_z = scale(data_screened$outcome)
+
+## specify model with IDs as random intercept
+lmem <- lmer(SoA ~ RT_z * outcome_z + (1|id), 
+         data=data_screened,
+         control = lmerControl(optCtrl=list(maxfun=1e5)), REML=F)
+
+summary(lmem)
+
+## plotting estimates/coefficients of fixed effects with confidence intervals 
+plot_model(lmem, type = "est") + myTheme() # or: sjp.lmer(lmem, type = "fe") 
+
+## plotting effect of RT on SoA as regression line
+plot_model(lmem, type = "eff", terms = c("RT_z", "outcome_z")) + myTheme()
+#sjp.lmer(lmem, type = "ri.slope") # plot slope for each individual
+
+
+## check assumptions of lmem by plotting diagnostics
+#plot_model(lmem, type = "diag")
+
+
+
+```
+
+
